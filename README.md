@@ -5,6 +5,17 @@ DNS".
 ```
 $ go install
 
-$ domainguesser -domain example.com -wordlist wordlist.txt
-www.example.com    93.184.216.34
+$ domainguesser -domain perlmonks.org -wordlist wordlist.txt
+ads.perlmonks.org     66.39.54.27
+css.perlmonks.org     216.92.34.251
+css.perlmonks.org     66.39.54.27
+css.perlmonks.org     209.197.123.153
+ns4.perlmonks.org     209.197.123.153
+ns4.perlmonks.org     216.92.34.251
+ns4.perlmonks.org     66.39.54.27
+www.perlmonks.org     216.92.34.251
+www.perlmonks.org     66.39.54.27
+www.perlmonks.org     209.197.123.153
+www1.perlmonks.org    66.39.54.27
+www2.perlmonks.org    209.197.123.153
 ```
