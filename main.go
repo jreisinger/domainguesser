@@ -1,151 +1,52 @@
 package main
 
 import (
-	"bufio"
-	"errors"
 	"flag"
 	"fmt"
-	"log"
-	"os"
-	"text/tabwriter"
 
-	"github.com/miekg/dns"
+	"github.com/jreisinger/work"
 )
 
-func init() {
-	log.SetPrefix(os.Args[0] + ": ")
-	log.SetFlags(0) // No timestamp.
-}
-
 func main() {
-	flDomain := flag.String("domain", "", "The domain to perform guessing against")
-	flWordlist := flag.String("wordlist", "", "The wordlist to use for guessing")
-	flWorkerCount := flag.Int("c", 100, "The number of workers to use")
-	flServerAddr := flag.String("server", "8.8.8.8:53", "The DNS server to use")
+	w := flag.Int("w", 100, "number of concurrent workers")
+	d := flag.String("d", "example.com", "domain to perform guessing against")
+	s := flag.String("s", "8.8.8.8:53", "DNS server address to use for lookups")
 	flag.Parse()
-	if *flDomain == "" || *flWordlist == "" { // Non-optional options :-).
-		log.Fatal("-domain and -wordlist are required")
+
+	f := &factory{
+		domain:     *d,
+		dnsSrvAddr: *s,
 	}
-
-	fqdns := make(chan string, *flWorkerCount)
-	gather := make(chan []result)
-	tracker := make(chan empty)
-
-	fh, err := os.Open(*flWordlist)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer fh.Close()
-	scanner := bufio.NewScanner(fh)
-
-	for i := 0; i < *flWorkerCount; i++ {
-		go worker(tracker, fqdns, gather, *flServerAddr)
-	}
-
-	var results []result
-
-	go func() {
-		for r := range gather {
-			results = append(results, r...)
-		}
-		var e empty
-		tracker <- e
-	}()
-
-	for scanner.Scan() {
-		fqdns <- fmt.Sprintf("%s.%s", scanner.Text(), *flDomain)
-	}
-	if scanner.Err() != nil {
-		log.Fatal(scanner.Err())
-	}
-
-	close(fqdns)
-	for i := 0; i < *flWorkerCount; i++ {
-		<-tracker
-	}
-	close(gather)
-	<-tracker
-
-	w := tabwriter.NewWriter(os.Stdout, 0, 8, 4, ' ', 0)
-	for _, r := range results {
-		fmt.Fprintf(w, "%s\t%s\n", r.Hostname, r.IPAddress)
-	}
-	w.Flush()
+	work.Run(f, *w)
 }
 
-type result struct {
-	IPAddress string
-	Hostname  string
+type factory struct {
+	domain     string
+	dnsSrvAddr string
 }
 
-func lookupA(fqdn, serverAddr string) ([]string, error) {
-	var m dns.Msg
-	var ips []string
-	m.SetQuestion(dns.Fqdn(fqdn), dns.TypeA)
-	r, err := dns.Exchange(&m, serverAddr)
-	if err != nil {
-		return ips, err
+func (f *factory) Generate(line string) work.Task {
+	subdomain := line
+	t := &task{
+		fqdn:          fmt.Sprintf("%s.%s", subdomain, f.domain),
+		dnsServerAddr: f.dnsSrvAddr,
 	}
-	if len(r.Answer) < 1 {
-		return ips, errors.New("no answer")
-	}
-	for _, answer := range r.Answer {
-		if a, ok := answer.(*dns.A); ok {
-			ips = append(ips, a.A.String())
-		}
-	}
-	return ips, nil
+	return t
 }
 
-func lookupCNAME(fqdn, serverAddr string) ([]string, error) {
-	var m dns.Msg
-	var fqdns []string
-	m.SetQuestion(dns.Fqdn(fqdn), dns.TypeCNAME)
-	in, err := dns.Exchange(&m, serverAddr)
-	if err != nil {
-		return fqdns, err
-	}
-	if len(in.Answer) < 1 {
-		return fqdns, errors.New("no answer")
-	}
-	for _, answer := range in.Answer {
-		if c, ok := answer.(*dns.CNAME); ok {
-			fqdns = append(fqdns, c.Target)
-		}
-	}
-	return fqdns, nil
+type task struct {
+	dnsServerAddr string
+	fqdn          string
+	ipAddrs       []string
 }
 
-func lookup(fqdn, serverAddr string) []result {
-	var results []result
-	var cfqdn = fqdn // Don't modify the original.
-	for {
-		cnames, err := lookupCNAME(cfqdn, serverAddr)
-		if err == nil && len(cnames) > 0 {
-			cfqdn = cnames[0]
-			continue // We have to process the next CNAME.
-		}
-		ips, err := lookupA(cfqdn, serverAddr)
-		if err != nil {
-			break // There are no A records for this hostname.
-		}
-		for _, ip := range ips {
-			results = append(results, result{IPAddress: ip, Hostname: fqdn})
-		}
-		break // We have processed all the results.
-	}
-	return results
+func (t *task) Process() {
+	results := lookup(t.fqdn, t.dnsServerAddr)
+	t.ipAddrs = results
 }
 
-type empty struct{}
-
-func worker(tracker chan empty, fqdns chan string, gather chan []result, serverAddr string) {
-	for fqdn := range fqdns {
-		results := lookup(fqdn, serverAddr)
-		if len(results) > 0 {
-			gather <- results
-		}
+func (t *task) Print() {
+	for _, ip := range t.ipAddrs {
+		fmt.Printf("%s\t%s\n", t.fqdn, ip)
 	}
-	var e empty
-	tracker <- e
 }
