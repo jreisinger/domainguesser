@@ -1,6 +1,6 @@
 Domainguesser tries to find subdomains for a given domain. If a subdomain is
-found its IP address is looked up. Adapted from "Black Hat Go: 5 Exploiting
-DNS".
+found it's printed together with its IP address. Adapted from "Black Hat Go: 5
+Exploiting DNS".
 
 ```
 $ go install
