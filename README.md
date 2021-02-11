@@ -1,6 +1,5 @@
-Domainguesser tries to find subdomains for a given domain. If a subdomain is
-found it's printed together with its IP address. Adapted from "Black Hat Go: 5
-Exploiting DNS".
+Domainguesser tries to guess subdomains for a given domain. If a subdomain is
+found it's printed together with its IP address.
 
 ```
 $ go install
@@ -19,3 +18,5 @@ www.perlmonks.org	216.92.34.251
 www1.perlmonks.org	66.39.54.27
 www2.perlmonks.org	209.197.123.153
 ```
+
+Adapted from "Black Hat Go: 5 Exploiting DNS".
